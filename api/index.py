@@ -4,49 +4,46 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List
 import json
-from pathlib import Path
+import os
 
 app = FastAPI()
 
-# 1. CORS Configuration (Fixed Conflict)
+# 1. Strict CORS Policy
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  
-    allow_credentials=False, # MUST be False when origins is "*"
+    allow_credentials=False, 
     allow_methods=["*"],  
     allow_headers=["*"],  
 )
 
-# 2. Safe Data Loading
-DATA_PATH = Path(__file__).parent.parent / "q-vercel-latency.json"
-RAW_DATA = []
+# 2. Bulletproof File Loading (Looks in the same folder as this script)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH = os.path.join(CURRENT_DIR, "q-vercel-latency.json")
 
-if DATA_PATH.exists():
+RAW_DATA = []
+if os.path.exists(DATA_PATH):
     with open(DATA_PATH) as f:
         RAW_DATA = json.load(f)
-else:
-    print(f"Warning: Data file not found at {DATA_PATH}")
 
-# 3. Request Model
 class AnalysisRequest(BaseModel):
     regions: List[str]
     threshold_ms: float
 
-# 4. Health Check Route (Catches GET requests to prevent 405 errors)
-@app.api_route("/", methods=["GET"])
-@app.api_route("/api", methods=["GET"])
+# 3. Health Check Route
+@app.api_route("/", methods=["GET", "OPTIONS"])
+@app.api_route("/api", methods=["GET", "OPTIONS"])
 def health_check():
-    return {"status": "success", "message": "API is awake and CORS is working!"}
+    if not RAW_DATA:
+         return {"status": "error", "message": "JSON file is missing!", "path_checked": DATA_PATH}
+    return {"status": "success", "message": "API is awake, CORS is fixed, and Data is loaded!"}
 
-# 5. Main Analysis Route (Catches POST requests from your frontend)
+# 4. Main Analysis Route
 @app.api_route("/", methods=["POST", "OPTIONS"])
 @app.api_route("/api", methods=["POST", "OPTIONS"])
 async def analyze(req: AnalysisRequest):
     if not RAW_DATA:
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Data file missing on server"}
-        )
+        return JSONResponse(status_code=500, content={"error": "Data file missing on server"})
 
     result = {}
     for region in req.regions:
@@ -54,11 +51,11 @@ async def analyze(req: AnalysisRequest):
         if not records:
             result[region] = None
             continue
+        
         latencies = [r["latency_ms"] for r in records]
         uptimes = [r["uptime_pct"] for r in records]
         sorted_lat = sorted(latencies)
         
-        # Calculate 95th percentile safely
         p95_index = int(len(sorted_lat) * 0.95)
         if p95_index >= len(sorted_lat):
             p95_index = len(sorted_lat) - 1
@@ -72,7 +69,7 @@ async def analyze(req: AnalysisRequest):
     
     return result
 
-# 6. Catch-all Preflight Handler (Crucial for Vercel)
+# 5. Preflight Catcher
 @app.options("/{full_path:path}")
 def preflight_handler():
     return {}
