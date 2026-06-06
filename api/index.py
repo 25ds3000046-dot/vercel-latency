@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 import json
-import os
+import urllib.request
 
 app = FastAPI()
 
@@ -14,9 +14,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load data
-with open("q-vercel-latency.json") as f:
-    RAW_DATA = json.load(f)
+# Load data from URL instead of file
+DATA_URL = "https://sanand0.github.io/tdsdata/q-vercel-latency.json"
+with urllib.request.urlopen(DATA_URL) as r:
+    RAW_DATA = json.loads(r.read().decode())
 
 class Request(BaseModel):
     regions: List[str]
