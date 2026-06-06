@@ -1,0 +1,14 @@
+name: Assignment Action
+
+# This tells the robot to wake up when code is pushed, or when you click a manual button
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # This is the exact step name your assignment requires
+      - name: 25ds3000046@ds.study.iitm.ac.in
+        run: echo "Hello, world!"
