@@ -24,8 +24,13 @@ class Request(BaseModel):
     regions: List[str]
     threshold_ms: float
 
-@app.post("/")
-@app.post("/api")
+# This tells FastAPI to accept GET, POST, and OPTIONS on the root URL
+@app.api_route("/", methods=["GET", "POST", "OPTIONS"])
+@app.api_route("/api", methods=["GET", "POST", "OPTIONS"])
+
+def latency_check():
+    return {"status": "success", "message": "Latency check complete!"}
+    
 async def analyze(req: Request):
     result = {}
     for region in req.regions:
