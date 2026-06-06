@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -8,34 +8,38 @@ from pathlib import Path
 
 app = FastAPI()
 
-# FIX 1: allow_credentials MUST be False if origins is "*"
+# 1. CORS Configuration (Fixed Conflict)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  
-    allow_credentials=False, 
+    allow_credentials=False, # MUST be False when origins is "*"
     allow_methods=["*"],  
     allow_headers=["*"],  
 )
 
-# SAFE LOAD: Prevents a 500 server crash (which causes a CORS error) if the file is missing on Vercel
+# 2. Safe Data Loading
 DATA_PATH = Path(__file__).parent.parent / "q-vercel-latency.json"
 RAW_DATA = []
+
 if DATA_PATH.exists():
     with open(DATA_PATH) as f:
         RAW_DATA = json.load(f)
 else:
     print(f"Warning: Data file not found at {DATA_PATH}")
 
+# 3. Request Model
 class AnalysisRequest(BaseModel):
     regions: List[str]
     threshold_ms: float
 
-# Basic health check route for the browser
-@app.api_route("/", methods=["GET", "OPTIONS"])
+# 4. Health Check Route (Catches GET requests to prevent 405 errors)
+@app.api_route("/", methods=["GET"])
+@app.api_route("/api", methods=["GET"])
 def health_check():
     return {"status": "success", "message": "API is awake and CORS is working!"}
 
-# FIX 2: The analyze function is now properly routed to receive POST requests!
+# 5. Main Analysis Route (Catches POST requests from your frontend)
+@app.api_route("/", methods=["POST", "OPTIONS"])
 @app.api_route("/api", methods=["POST", "OPTIONS"])
 async def analyze(req: AnalysisRequest):
     if not RAW_DATA:
@@ -53,9 +57,9 @@ async def analyze(req: AnalysisRequest):
         latencies = [r["latency_ms"] for r in records]
         uptimes = [r["uptime_pct"] for r in records]
         sorted_lat = sorted(latencies)
-        p95_index = int(len(sorted_lat) * 0.95)
         
-        # Ensure we don't go out of bounds on the index
+        # Calculate 95th percentile safely
+        p95_index = int(len(sorted_lat) * 0.95)
         if p95_index >= len(sorted_lat):
             p95_index = len(sorted_lat) - 1
             
@@ -66,10 +70,9 @@ async def analyze(req: AnalysisRequest):
             "breaches": sum(1 for l in latencies if l > req.threshold_ms)
         }
     
-    # FastAPI automatically handles the JSON conversion and CORS headers
     return result
 
-# Catch-all preflight handler for Vercel
+# 6. Catch-all Preflight Handler (Crucial for Vercel)
 @app.options("/{full_path:path}")
 def preflight_handler():
     return {}
