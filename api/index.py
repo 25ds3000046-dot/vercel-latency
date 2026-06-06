@@ -1,5 +1,4 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List
@@ -8,16 +7,14 @@ import os
 
 app = FastAPI()
 
-# 1. Strict CORS Policy
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  
-    allow_credentials=False, 
-    allow_methods=["*"],  
-    allow_headers=["*"],  
-)
+# 1. Hardcoded Headers (Bypassing middleware unreliability)
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
+}
 
-# 2. Bulletproof File Loading (Looks in the same folder as this script)
+# 2. File Loading
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(CURRENT_DIR, "q-vercel-latency.json")
 
@@ -30,20 +27,30 @@ class AnalysisRequest(BaseModel):
     regions: List[str]
     threshold_ms: float
 
-# 3. Health Check Route
-@app.api_route("/", methods=["GET", "OPTIONS"])
-@app.api_route("/api", methods=["GET", "OPTIONS"])
+# 3. Health Route (Forcing headers)
+@app.api_route("/", methods=["GET"])
+@app.api_route("/api", methods=["GET"])
 def health_check():
     if not RAW_DATA:
-         return {"status": "error", "message": "JSON file is missing!", "path_checked": DATA_PATH}
-    return {"status": "success", "message": "API is awake, CORS is fixed, and Data is loaded!"}
+         return JSONResponse(
+             content={"status": "error", "message": "JSON missing"}, 
+             headers=CORS_HEADERS
+         )
+    return JSONResponse(
+        content={"status": "success", "message": "API is awake!"}, 
+        headers=CORS_HEADERS
+    )
 
-# 4. Main Analysis Route
-@app.api_route("/", methods=["POST", "OPTIONS"])
-@app.api_route("/api", methods=["POST", "OPTIONS"])
+# 4. Main Route (Forcing headers)
+@app.api_route("/", methods=["POST"])
+@app.api_route("/api", methods=["POST"])
 async def analyze(req: AnalysisRequest):
     if not RAW_DATA:
-        return JSONResponse(status_code=500, content={"error": "Data file missing on server"})
+        return JSONResponse(
+            status_code=500, 
+            content={"error": "Data file missing"}, 
+            headers=CORS_HEADERS
+        )
 
     result = {}
     for region in req.regions:
@@ -67,9 +74,10 @@ async def analyze(req: AnalysisRequest):
             "breaches": sum(1 for l in latencies if l > req.threshold_ms)
         }
     
-    return result
+    # Explicitly stapling the header to the outgoing data
+    return JSONResponse(content=result, headers=CORS_HEADERS)
 
-# 5. Preflight Catcher
+# 5. Manual Preflight Catcher (Forcing headers)
 @app.options("/{full_path:path}")
-def preflight_handler():
-    return {}
+def preflight_handler(request: Request, full_path: str):
+    return JSONResponse(content={}, headers=CORS_HEADERS)
