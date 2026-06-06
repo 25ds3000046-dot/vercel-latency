@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List
 import json
@@ -10,11 +11,11 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Find the JSON file relative to this Python file
 DATA_PATH = Path(__file__).parent.parent / "q-vercel-latency.json"
 with open(DATA_PATH) as f:
     RAW_DATA = json.load(f)
@@ -42,4 +43,7 @@ async def analyze(req: Request):
             "avg_uptime": sum(uptimes) / len(uptimes),
             "breaches": sum(1 for l in latencies if l > req.threshold_ms)
         }
-    return result
+    return JSONResponse(
+        content=result,
+        headers={"Access-Control-Allow-Origin": "*"}
+    )
